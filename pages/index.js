@@ -1,19 +1,23 @@
 import React, { useState, useEffect } from 'react';
+import App from 'next/app';
 import Head from 'next/head';
 import PropTypes from 'prop-types';
 import path from 'path';
 import classNames from 'classnames';
+import Markdown from 'markdown-to-jsx';
 
+import { Provider } from 'react-redux';
+import { createWrapper } from 'next-redux-wrapper';
 import { listFiles } from '../files';
-
+// import { Markdown } from 'markdown-to-html';
 // Used below, these need to be registered
-import MarkdownEditor from '../MarkdownEditor';
 import PlaintextEditor from '../components/PlaintextEditor';
-
+import MarkdownEditor from '../MarkdownEditor';
 import IconPlaintextSVG from '../public/icon-plaintext.svg';
 import IconMarkdownSVG from '../public/icon-markdown.svg';
 import IconJavaScriptSVG from '../public/icon-javascript.svg';
 import IconJSONSVG from '../public/icon-json.svg';
+import MDEditor from '@uiw/react-md-editor';
 
 import css from './style.module.css';
 
@@ -24,7 +28,8 @@ const TYPE_TO_ICON = {
   'application/json': IconJSONSVG
 };
 
-function FilesTable({ files, activeFile, setActiveFile }) {
+function FilesTable({ files, activeFile, setActiveFile, setCurrentIndex }) {
+  // console.log(file1);
   return (
     <div className={css.files}>
       <table>
@@ -35,14 +40,17 @@ function FilesTable({ files, activeFile, setActiveFile }) {
           </tr>
         </thead>
         <tbody>
-          {files.map(file => (
+          {files.map((file, index) => (
             <tr
               key={file.name}
               className={classNames(
                 css.row,
                 activeFile && activeFile.name === file.name ? css.active : ''
               )}
-              onClick={() => setActiveFile(file)}
+              onClick={() => {
+                setCurrentIndex(index);
+                setActiveFile(file);
+              }}
             >
               <td className={css.file}>
                 <div
@@ -76,19 +84,48 @@ FilesTable.propTypes = {
   setActiveFile: PropTypes.func
 };
 
-function Previewer({ file }) {
+function Previewer({ file, index, write, updateState }) {
   const [value, setValue] = useState('');
-
+  const [fileType, setFileType] = useState('');
+  // console.log('PREVIEWER COMPONENT RERENDERED');
   useEffect(() => {
     (async () => {
-      setValue(await file.text());
+      // console.log('WE ENTERED HERE!');
+      const text = await file.text();
+      // console.log('THIS IS THE TEXT', text);
+      setValue(text);
+      setFileType(file.type);
     })();
-  }, [file]);
+  });
 
   return (
-    <div className={css.preview}>
-      <div className={css.title}>{path.basename(file.name)}</div>
-      <div className={css.content}>{value}</div>
+    <div>
+      <PlaintextEditor
+        write={write}
+        index={index}
+        file={file}
+        content={value}
+      />
+      <br />
+      {/* <MarkdownEditor filetype={fileType} content={value} />
+      <br /> */}
+      {/* <br /> */}
+      {/* if (filetype == 'text/plain' || filetype == 'text/markdown') */}
+      <div className={css.preview}>
+        <div className={css.title}>
+          {`${path.basename(file.name)} `}
+          {file.type == 'text/plain' || file.type == 'text/markdown'
+            ? '  (Markdown Rendering)'
+            : '(Markdown not supported for file type)'}{' '}
+        </div>
+        <div
+          // dangerouslySetInnerHTML={{ __html: 'First &middot; Second' }}
+          className={css.content}
+        >
+          <Markdown>{value}</Markdown>
+          {/* {value}{' '} */}
+        </div>
+      </div>
     </div>
   );
 }
@@ -106,15 +143,33 @@ const REGISTERED_EDITORS = {
 function PlaintextFilesChallenge() {
   const [files, setFiles] = useState([]);
   const [activeFile, setActiveFile] = useState(null);
-
+  const [currentIndex, setCurrentIndex] = useState();
   useEffect(() => {
     const files = listFiles();
     setFiles(files);
   }, []);
 
-  const write = file => {
-    console.log('Writing soon... ', file.name);
-
+  const write = async (index, text, name, type) => {
+    // console.log('Writing soon... ', file.name);
+    // const newFile = new File(`${text}`, '/document.json', {
+    //   type: 'application/json',
+    //   lastModified: new Date('2011-07-29T16:01:35')
+    // });
+    const arr = files.map((file, indexing) => {
+      if (index !== indexing) {
+        return file;
+      } else {
+        const newFile = new File([text], name, {
+          type,
+          lastModified: new Date()
+        });
+        // console.log('THIS IS THE NEW FILE', newFile);
+        return newFile;
+      }
+    });
+    setActiveFile(arr[currentIndex]);
+    setFiles(arr);
+    // console.log('CURRENT TEXT', await files[currentIndex].text());
     // TODO: Write the file to the `files` array
   };
 
@@ -139,6 +194,7 @@ function PlaintextFilesChallenge() {
           files={files}
           activeFile={activeFile}
           setActiveFile={setActiveFile}
+          setCurrentIndex={setCurrentIndex}
         />
 
         <div style={{ flex: 1 }}></div>
@@ -158,7 +214,9 @@ function PlaintextFilesChallenge() {
         {activeFile && (
           <>
             {Editor && <Editor file={activeFile} write={write} />}
-            {!Editor && <Previewer file={activeFile} />}
+            {!Editor && (
+              <Previewer write={write} index={currentIndex} file={activeFile} />
+            )}
           </>
         )}
 
